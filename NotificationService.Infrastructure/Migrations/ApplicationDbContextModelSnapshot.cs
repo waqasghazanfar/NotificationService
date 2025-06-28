@@ -28,10 +28,9 @@ namespace NotificationService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Channel")
-                        .IsRequired()
+                    b.Property<int>("Channel")
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("int");
 
                     b.Property<Guid>("CorrelationId")
                         .HasColumnType("uniqueidentifier");
@@ -84,10 +83,9 @@ namespace NotificationService.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("Channel")
-                        .IsRequired()
+                    b.Property<int>("Channel")
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");

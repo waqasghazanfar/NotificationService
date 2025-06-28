@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NotificationService.Domain.Enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,6 +9,6 @@ namespace NotificationService.Application.Contracts.Persistence
 {
     public interface ITemplateRepository : IAsyncRepository<Domain.Entities.Template>
     {
-        Task<Domain.Entities.Template?> GetTemplateAsync(string name, string channel, string locale);
+        Task<Domain.Entities.Template?> GetTemplateAsync(string name, ChannelType channel, string locale);
     }
 }

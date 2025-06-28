@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NotificationService.Domain.Enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -43,6 +44,6 @@ namespace NotificationService.Application.DTOs
 
     public class OverrideDto
     {
-        public List<string> Channels { get; set; } = new();
+        public List<ChannelType> Channels { get; set; } = new();
     }
 }

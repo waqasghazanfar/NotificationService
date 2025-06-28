@@ -3,6 +3,7 @@
     using Moq;
     using NotificationService.Application.Contracts.Persistence;
     using NotificationService.Domain.Entities;
+    using NotificationService.Domain.Enums;
 
     public static class MockRepository
     {
@@ -14,7 +15,7 @@
                 {
                     Id = Guid.NewGuid(),
                     Name = "TestEvent",
-                    Channel = "Email",
+                    Channel = ChannelType.Email,
                     Locale = "en-GB",
                     Subject = "Test Subject",
                     Body = "Hello {{name}}",
@@ -25,7 +26,7 @@
                 {
                     Id = Guid.NewGuid(),
                     Name = "TestEvent",
-                    Channel = "Sms",
+                    Channel = ChannelType.Sms,
                     Locale = "en-GB",
                     Body = "Hi {{name}}",
                     IsActive = true,

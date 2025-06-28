@@ -12,7 +12,7 @@ using NotificationService.Infrastructure.Persistence;
 namespace NotificationService.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250628184905_init")]
+    [Migration("20250628233455_init")]
     partial class init
     {
         /// <inheritdoc />
@@ -31,10 +31,9 @@ namespace NotificationService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Channel")
-                        .IsRequired()
+                    b.Property<int>("Channel")
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("int");
 
                     b.Property<Guid>("CorrelationId")
                         .HasColumnType("uniqueidentifier");
@@ -87,10 +86,9 @@ namespace NotificationService.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("Channel")
-                        .IsRequired()
+                    b.Property<int>("Channel")
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");

@@ -2,7 +2,8 @@ using Microsoft.AspNetCore.Authentication;
 using NotificationService.Api.Authentication;
 using NotificationService.Infrastructure;
 using System.Reflection;
-using AutoMapper; // Explicitly include AutoMapper namespace to avoid ambiguity
+using AutoMapper;
+using Microsoft.OpenApi.Models; // Explicitly include AutoMapper namespace to avoid ambiguity
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,7 +32,34 @@ builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "NotificationService API", Version = "v1" });
+
+    c.AddSecurityDefinition("Basic", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "basic",
+        In = ParameterLocation.Header,
+        Description = "Basic Authorization header using ClientId and ClientSecret"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Basic"
+                }
+            },
+            new string[] {}
+        }
+    });
+});
 
 var app = builder.Build();
 

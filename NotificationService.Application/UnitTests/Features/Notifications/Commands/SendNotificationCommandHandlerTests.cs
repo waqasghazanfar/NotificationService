@@ -12,6 +12,7 @@ namespace NotificationService.Application.UnitTests.Features.Notifications.Comma
     using NotificationService.Domain.Entities;
     using NotificationService.Application.UnitTests.Mocks;
     using MockRepository = Mocks.MockRepository;
+    using NotificationService.Domain.Enums;
 
     public class SendNotificationCommandHandlerTests
     {
@@ -36,7 +37,7 @@ namespace NotificationService.Application.UnitTests.Features.Notifications.Comma
                 {
                     Recipient = new RecipientDto { Email = new EmailDto { To = new List<string> { "test@example.com" } } },
                     Event = new EventDto { Name = "TestEvent" },
-                    Overrides = new OverrideDto { Channels = new List<string> { "Email" } }
+                    Overrides = new OverrideDto { Channels = new List<ChannelType> { ChannelType.Email } }
                 }
             };
             NotificationLog? capturedLog = null;
@@ -56,7 +57,7 @@ namespace NotificationService.Application.UnitTests.Features.Notifications.Comma
 
             capturedLog.Should().NotBeNull();
             capturedLog?.Status.Should().Be("Queued");
-            capturedLog?.Channel.Should().Be("Email");
+            capturedLog?.Channel.Should().Be(ChannelType.Email);
             capturedLog?.Recipient.Should().Be("test@example.com");
         }
 
@@ -74,7 +75,7 @@ namespace NotificationService.Application.UnitTests.Features.Notifications.Comma
                         PhoneNumber = "1234567890"
                     },
                     Event = new EventDto { Name = "TestEvent" },
-                    Overrides = new OverrideDto { Channels = new List<string> { "Email", "Sms" } }
+                    Overrides = new OverrideDto { Channels = new List<ChannelType> { ChannelType.Email, ChannelType.Sms } }
                 }
             };
             var capturedLogs = new List<NotificationLog>();
@@ -93,8 +94,8 @@ namespace NotificationService.Application.UnitTests.Features.Notifications.Comma
             _mockQueue.Verify(q => q.EnqueueAsync(It.IsAny<NotificationLog>()), Times.Exactly(2));
 
             capturedLogs.Should().HaveCount(2);
-            capturedLogs.Should().Contain(l => l.Channel == "Email" && l.Recipient == "test@example.com");
-            capturedLogs.Should().Contain(l => l.Channel == "Sms" && l.Recipient == "1234567890");
+            capturedLogs.Should().Contain(l => l.Channel == ChannelType.Email && l.Recipient == "test@example.com");
+            capturedLogs.Should().Contain(l => l.Channel == ChannelType.Sms && l.Recipient == "1234567890");
         }
     }
 }

@@ -7,6 +7,7 @@
     using System.Text.Json;
     using NotificationService.Application.Contracts.Persistence;
     using NotificationService.Application.Contracts.Infrastructure;
+    using NotificationService.Domain.Enums;
 
     public class QueuedNotificationProcessor : BackgroundService
     {
@@ -90,12 +91,12 @@
             string response = "Provider not found for channel.";
             try
             {
-                if (log.Channel.Equals("Email", StringComparison.OrdinalIgnoreCase))
+                if (log.Channel == ChannelType.Email)
                 {
                     var provider = sp.GetRequiredService<IEmailProvider>();
                     response = await provider.SendEmailAsync(log.Recipient, template.Subject ?? "Notification", renderedBody);
                 }
-                else if (log.Channel.Equals("Sms", StringComparison.OrdinalIgnoreCase))
+                else if (log.Channel == ChannelType.Sms)
                 {
                     var provider = sp.GetRequiredService<ISmsProvider>();
                     response = await provider.SendSmsAsync(log.Recipient, renderedBody);

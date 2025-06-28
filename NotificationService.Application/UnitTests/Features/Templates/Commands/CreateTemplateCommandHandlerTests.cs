@@ -10,6 +10,7 @@
     using NotificationService.Domain.Entities;
     using NotificationService.Application.UnitTests.Mocks;
     using MockRepository = Mocks.MockRepository;
+    using NotificationService.Domain.Enums;
 
     public class CreateTemplateCommandHandlerTests
     {
@@ -31,7 +32,7 @@
         {
             // Arrange
             var handler = new CreateTemplateCommandHandler(_mapper, _mockRepo.Object);
-            var command = new CreateTemplateCommand() { Name = "NewTemplate", Channel = "Email", Locale = "en-GB", Body = "Body" };
+            var command = new CreateTemplateCommand() { Name = "NewTemplate", Channel = ChannelType.Email, Locale = "en-GB", Body = "Body" };
 
             // Act
             var result = await handler.Handle(command, CancellationToken.None);

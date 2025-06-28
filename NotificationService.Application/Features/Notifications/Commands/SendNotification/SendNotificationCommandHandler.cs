@@ -5,6 +5,7 @@
     using NotificationService.Application.Contracts.Persistence;
     using NotificationService.Application.Contracts.Infrastructure;
     using NotificationService.Domain.Entities;
+    using NotificationService.Domain.Enums;
 
     public class SendNotificationCommandHandler : IRequestHandler<SendNotificationCommand, Guid>
     {
@@ -33,11 +34,11 @@
             foreach (var channel in channels)
             {
                 string recipient = "Unknown";
-                if (channel.Equals("Email", StringComparison.OrdinalIgnoreCase))
+                if (channel == ChannelType.Email)
                 {
                     recipient = request.NotificationRequest.Recipient.Email?.To.FirstOrDefault() ?? "Unknown";
                 }
-                else if (channel.Equals("Sms", StringComparison.OrdinalIgnoreCase))
+                else if (channel == ChannelType.Sms)
                 {
                     recipient = request.NotificationRequest.Recipient.PhoneNumber ?? "Unknown";
                 }
