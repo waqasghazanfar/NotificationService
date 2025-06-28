@@ -1,0 +1,1465 @@
+﻿/*
+================================================================================
+SOLUTION STRUCTURE
+================================================================================
+
+- NotificationService.sln
+  - .dockerignore
+  - docker-compose.yml
+  - NotificationService.Domain/
+    - ... (project content)
+  - NotificationService.Application/
+    - ... (project content)
+  - NotificationService.Infrastructure/
+    - ... (project content)
+  - NotificationService.Api/
+    - Dockerfile
+    - appsettings.json  <-- ADDED FOR CLARITY
+    - Authentication/   <-- ADDED
+      - BasicAuthenticationHandler.cs
+      - SecuritySettings.cs
+    - Controllers/
+      - NotificationsController.cs
+      - TemplatesController.cs
+    - Program.cs
+  - NotificationService.Application.UnitTests/
+    - ... (project content)
+
+================================================================================
+*/
+
+
+//==============================================================================
+// FILE: .dockerignore (In Solution Root)
+//==============================================================================
+/*
+**/.classpath
+**/.dockerignore
+**/.env
+**/.git
+**/.gitignore
+**/.project
+**/.settings
+**/.toolstarget
+**/.vs
+**/.vscode
+**/*.*proj.user
+**/*.dbmdl
+**/*.jfm
+**/azds.yaml
+**/bin
+**/charts
+**/docker-compose*
+**/Dockerfile*
+**/obj
+**/secrets.dev.yaml
+**/values.dev.yaml
+README.md
+*/
+
+
+//==============================================================================
+// FILE: docker-compose.yml (In Solution Root)
+//==============================================================================
+/*
+version: '3.8'
+
+services:
+  # SQL Server for Linux service
+  notifications-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: notifications-db
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=yourStrong(!)Password123
+    ports:
+      - "1433:1433"
+    volumes:
+      - notifications-db-data:/var/opt/mssql
+
+  # Notification API service
+  notifications-api:
+    container_name: notifications-api
+    build:
+      context: .
+      dockerfile: NotificationService.Api/Dockerfile
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      # --- Security Settings ---
+      - SecuritySettings__EnableAuthentication=true
+      - SecuritySettings__ClientId=YourApiClientId
+      - SecuritySettings__ClientSecret=YourSuperSecretApiClientSecretValue!
+      # --- End Security Settings ---
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+:8081;http://+:8080
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=yoursecurepassword
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+      - ConnectionStrings__DefaultConnection=Server=notifications-db;Database=NotificationServiceDb;User Id=sa;Password=yourStrong(!)Password123;MultipleActiveResultSets=true;TrustServerCertificate=true;
+    volumes:
+      - ~/.aspnet/https:/https:ro
+    depends_on:
+      - notifications-db
+
+volumes:
+  notifications-db-data:
+*/
+
+
+//==============================================================================
+// FILE: NotificationService.Api/Dockerfile
+//==============================================================================
+/*
+#See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
+
+# Use the official .NET SDK image as a build environment
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copy csproj files and restore as distinct layers to leverage Docker layer caching
+COPY ["NotificationService.Api/NotificationService.Api.csproj", "NotificationService.Api/"]
+COPY ["NotificationService.Application/NotificationService.Application.csproj", "NotificationService.Application/"]
+COPY ["NotificationService.Domain/NotificationService.Domain.csproj", "NotificationService.Domain/"]
+COPY ["NotificationService.Infrastructure/NotificationService.Infrastructure.csproj", "NotificationService.Infrastructure/"]
+# If you had test projects, you'd copy them here too for completeness
+# COPY ["NotificationService.Application.UnitTests/NotificationService.Application.UnitTests.csproj", "NotificationService.Application.UnitTests/"]
+
+RUN dotnet restore "NotificationService.Api/NotificationService.Api.csproj"
+
+# Copy the rest of the source code
+COPY . .
+WORKDIR "/src/NotificationService.Api"
+RUN dotnet build "NotificationService.Api.csproj" -c Release -o /app/build
+
+# Publish the application
+FROM build AS publish
+RUN dotnet publish "NotificationService.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+# Build the final runtime image
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+COPY --from=publish /app/publish .
+ENTRYPOINT ["dotnet", "NotificationService.Api.dll"]
+*/
+
+
+//==============================================================================
+// FILE: NotificationService.Api/appsettings.json
+//==============================================================================
+/*
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=.;Database=NotificationServiceDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=true"
+  },
+  "SecuritySettings": {
+    "EnableAuthentication": true,
+    "ClientId": "local-client-id",
+    "ClientSecret": "local-client-secret"
+  }
+}
+*/
+
+
+//==============================================================================
+// FILE: NotificationService.Api/Authentication/SecuritySettings.cs
+//==============================================================================
+namespace NotificationService.Api.Authentication
+{
+    public class SecuritySettings
+    {
+        public bool EnableAuthentication { get; set; } = false;
+        public string ClientId { get; set; } = string.Empty;
+        public string ClientSecret { get; set; } = string.Empty;
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Api/Authentication/BasicAuthenticationHandler.cs
+//==============================================================================
+namespace NotificationService.Api.Authentication
+{
+    using Microsoft.AspNetCore.Authentication;
+    using Microsoft.Extensions.Options;
+    using System.Net.Http.Headers;
+    using System.Security.Claims;
+    using System.Text;
+    using System.Text.Encodings.Web;
+
+    public class BasicAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
+    {
+        private readonly SecuritySettings _securitySettings;
+
+        public BasicAuthenticationHandler(
+            IOptionsMonitor<AuthenticationSchemeOptions> options,
+            ILoggerFactory logger,
+            UrlEncoder encoder,
+            IOptions<SecuritySettings> securitySettings)
+            : base(options, logger, encoder)
+        {
+            _securitySettings = securitySettings.Value;
+        }
+
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            // If authentication is disabled in config, automatically succeed.
+            if (!_securitySettings.EnableAuthentication)
+            {
+                var claims = new[] { new Claim(ClaimTypes.Name, "System") };
+                var identity = new ClaimsIdentity(claims, Scheme.Name);
+                var principal = new ClaimsPrincipal(identity);
+                var ticket = new AuthenticationTicket(principal, Scheme.Name);
+                return Task.FromResult(AuthenticateResult.Success(ticket));
+            }
+            
+            // Handle actual authentication if enabled.
+            if (!Request.Headers.ContainsKey("Authorization"))
+                return Task.FromResult(AuthenticateResult.Fail("Missing Authorization Header"));
+
+            try
+            {
+                var authHeader = AuthenticationHeaderValue.Parse(Request.Headers["Authorization"]!);
+                var credentialBytes = Convert.FromBase64String(authHeader.Parameter!);
+                var credentials = Encoding.UTF8.GetString(credentialBytes).Split(new[] { ':' }, 2);
+                var clientId = credentials[0];
+                var clientSecret = credentials[1];
+
+                if (clientId == _securitySettings.ClientId && clientSecret == _securitySettings.ClientSecret)
+                {
+                    var claims = new[] {
+                        new Claim(ClaimTypes.NameIdentifier, clientId),
+                        new Claim(ClaimTypes.Name, clientId),
+                    };
+                    var identity = new ClaimsIdentity(claims, Scheme.Name);
+                    var principal = new ClaimsPrincipal(identity);
+                    var ticket = new AuthenticationTicket(principal, Scheme.Name);
+
+                    return Task.FromResult(AuthenticateResult.Success(ticket));
+                }
+
+                return Task.FromResult(AuthenticateResult.Fail("Invalid ClientId or ClientSecret"));
+            }
+            catch
+            {
+                return Task.FromResult(AuthenticateResult.Fail("Invalid Authorization Header"));
+            }
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Domain/Entities/NotificationLog.cs
+//==============================================================================
+namespace NotificationService.Domain.Entities
+{
+    /// <summary>
+    /// Represents a log entry for a single notification attempt.
+    /// This entity serves as an audit trail for all outgoing communications.
+    /// </summary>
+    public class NotificationLog
+    {
+        public Guid Id { get; set; }
+        public Guid CorrelationId { get; set; }
+        public string EventName { get; set; } = string.Empty;
+        public string Channel { get; set; } = string.Empty;
+        public string Recipient { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string Payload { get; set; } = string.Empty;
+        public string? TemplateContent { get; set; }
+        public string? ProviderResponse { get; set; }
+        public DateTime CreatedAtUtc { get; set; }
+        public DateTime? ProcessedAtUtc { get; set; }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Domain/Entities/Template.cs
+//==============================================================================
+namespace NotificationService.Domain.Entities
+{
+    /// <summary>
+    /// Represents a reusable notification template.
+    /// Templates allow for consistent messaging and easy content updates.
+    /// </summary>
+    public class Template
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Channel { get; set; } = string.Empty;
+        public string Locale { get; set; } = string.Empty;
+        public string? Subject { get; set; }
+        public string Body { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+        public DateTime CreatedAtUtc { get; set; }
+        public DateTime? UpdatedAtUtc { get; set; }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application/Contracts/Persistence/IAsyncRepository.cs
+//==============================================================================
+namespace NotificationService.Application.Contracts.Persistence
+{
+    public interface IAsyncRepository<T> where T : class
+    {
+        Task<T?> GetByIdAsync(Guid id);
+        Task<IReadOnlyList<T>> ListAllAsync();
+        Task<T> AddAsync(T entity);
+        Task UpdateAsync(T entity);
+        Task DeleteAsync(T entity);
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/Contracts/Persistence/INotificationLogRepository.cs
+//==============================================================================
+namespace NotificationService.Application.Contracts.Persistence
+{
+    public interface INotificationLogRepository : IAsyncRepository<Domain.Entities.NotificationLog>
+    {
+        Task<IReadOnlyList<Domain.Entities.NotificationLog>> GetHistoryByRecipientAsync(string recipient);
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/Contracts/Persistence/ITemplateRepository.cs
+//==============================================================================
+namespace NotificationService.Application.Contracts.Persistence
+{
+    public interface ITemplateRepository : IAsyncRepository<Domain.Entities.Template>
+    {
+        Task<Domain.Entities.Template?> GetTemplateAsync(string name, string channel, string locale);
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application/Contracts/Infrastructure/IEmailProvider.cs
+//==============================================================================
+namespace NotificationService.Application.Contracts.Infrastructure
+{
+    public interface IEmailProvider
+    {
+        Task<string> SendEmailAsync(string to, string subject, string body);
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/Contracts/Infrastructure/ISmsProvider.cs
+//==============================================================================
+namespace NotificationService.Application.Contracts.Infrastructure
+{
+    public interface ISmsProvider
+    {
+        Task<string> SendSmsAsync(string to, string message);
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/DTOs/NotificationRequestDto.cs
+//==============================================================================
+namespace NotificationService.Application.DTOs
+{
+    public class NotificationRequestDto
+    {
+        public RecipientDto Recipient { get; set; } = new();
+        public EventDto Event { get; set; } = new();
+        public MetadataDto Metadata { get; set; } = new();
+        public OverrideDto Overrides { get; set; } = new();
+    }
+
+    public class RecipientDto
+    {
+        public string? UserId { get; set; }
+        public EmailDto? Email { get; set; }
+        public string? PhoneNumber { get; set; }
+        public List<string>? PushTokens { get; set; }
+    }
+
+    public class EmailDto
+    {
+        public List<string> To { get; set; } = new();
+        public List<string>? Cc { get; set; }
+        public List<string>? Bcc { get; set; }
+    }
+
+    public class EventDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public Dictionary<string, object> Data { get; set; } = new();
+        public string Locale { get; set; } = "en-GB";
+    }
+    
+    public class MetadataDto
+    {
+        public Guid CorrelationId { get; set; } = Guid.NewGuid();
+    }
+
+    public class OverrideDto
+    {
+        public List<string> Channels { get; set; } = new();
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application/DTOs/TemplateDto.cs
+//==============================================================================
+namespace NotificationService.Application.DTOs
+{
+    public class TemplateDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Channel { get; set; } = string.Empty;
+        public string Locale { get; set; } = string.Empty;
+        public string? Subject { get; set; }
+        public string Body { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application/Features/Notifications/Commands/SendNotification/SendNotificationCommand.cs
+//==============================================================================
+namespace NotificationService.Application.Features.Notifications.Commands.SendNotification
+{
+    using MediatR;
+    using NotificationService.Application.DTOs;
+
+    public class SendNotificationCommand : IRequest<Guid>
+    {
+        public NotificationRequestDto NotificationRequest { get; set; } = new();
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/Features/Notifications/Commands/SendNotification/SendNotificationCommandHandler.cs
+//==============================================================================
+namespace NotificationService.Application.Features.Notifications.Commands.SendNotification
+{
+    using MediatR;
+    using System.Text.Json;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Application.Contracts.Infrastructure;
+    using NotificationService.Domain.Entities;
+
+    public class SendNotificationCommandHandler : IRequestHandler<SendNotificationCommand, Guid>
+    {
+        private readonly INotificationLogRepository _notificationLogRepository;
+        private readonly IInMemoryNotificationQueue _queue;
+
+        public SendNotificationCommandHandler(INotificationLogRepository notificationLogRepository, IInMemoryNotificationQueue queue)
+        {
+            _notificationLogRepository = notificationLogRepository;
+            _queue = queue;
+        }
+
+        public async Task<Guid> Handle(SendNotificationCommand request, CancellationToken cancellationToken)
+        {
+            var correlationId = request.NotificationRequest.Metadata.CorrelationId;
+
+            // This logic is now more robust to handle multiple channels
+            var channels = request.NotificationRequest.Overrides.Channels;
+            if (channels == null || !channels.Any())
+            {
+                // In a real scenario, you might have default channels based on event type
+                // or user preferences. For now, we'll assume at least one is provided.
+                throw new ArgumentException("No channels specified for notification.");
+            }
+
+            foreach (var channel in channels)
+            {
+                string recipient = "Unknown";
+                if (channel.Equals("Email", StringComparison.OrdinalIgnoreCase))
+                {
+                    recipient = request.NotificationRequest.Recipient.Email?.To.FirstOrDefault() ?? "Unknown";
+                }
+                else if (channel.Equals("Sms", StringComparison.OrdinalIgnoreCase))
+                {
+                    recipient = request.NotificationRequest.Recipient.PhoneNumber ?? "Unknown";
+                }
+
+                var log = new NotificationLog
+                {
+                    Id = Guid.NewGuid(),
+                    CorrelationId = correlationId,
+                    EventName = request.NotificationRequest.Event.Name,
+                    Channel = channel,
+                    Recipient = recipient,
+                    Status = "Queued",
+                    Payload = JsonSerializer.Serialize(request.NotificationRequest),
+                    CreatedAtUtc = DateTime.UtcNow
+                };
+
+                await _notificationLogRepository.AddAsync(log);
+
+                // Enqueue each log for background processing
+                await _queue.EnqueueAsync(log);
+            }
+
+            return correlationId;
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application/Features/Templates/Queries/GetTemplatesList/TemplateListVm.cs
+//==============================================================================
+namespace NotificationService.Application.Features.Templates.Queries.GetTemplatesList
+{
+    public class TemplateListVm
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Channel { get; set; } = string.Empty;
+        public string Locale { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/Features/Templates/Queries/GetTemplatesList/GetTemplatesListQuery.cs
+//==============================================================================
+namespace NotificationService.Application.Features.Templates.Queries.GetTemplatesList
+{
+    using MediatR;
+    
+    public class GetTemplatesListQuery : IRequest<List<TemplateListVm>>
+    {
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/Features/Templates/Queries/GetTemplatesList/GetTemplatesListQueryHandler.cs
+//==============================================================================
+namespace NotificationService.Application.Features.Templates.Queries.GetTemplatesList
+{
+    using AutoMapper;
+    using MediatR;
+    using NotificationService.Application.Contracts.Persistence;
+    
+    public class GetTemplatesListQueryHandler : IRequestHandler<GetTemplatesListQuery, List<TemplateListVm>>
+    {
+        private readonly IAsyncRepository<Domain.Entities.Template> _templateRepository;
+        private readonly IMapper _mapper;
+
+        public GetTemplatesListQueryHandler(IMapper mapper, IAsyncRepository<Domain.Entities.Template> templateRepository)
+        {
+            _mapper = mapper;
+            _templateRepository = templateRepository;
+        }
+
+        public async Task<List<TemplateListVm>> Handle(GetTemplatesListQuery request, CancellationToken cancellationToken)
+        {
+            var allTemplates = await _templateRepository.ListAllAsync();
+            return _mapper.Map<List<TemplateListVm>>(allTemplates);
+        }
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/Features/Templates/Commands/CreateTemplate/CreateTemplateCommand.cs
+//==============================================================================
+namespace NotificationService.Application.Features.Templates.Commands.CreateTemplate
+{
+    using MediatR;
+    
+    public class CreateTemplateCommand : IRequest<Guid>
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Channel { get; set; } = string.Empty;
+        public string Locale { get; set; } = string.Empty;
+        public string? Subject { get; set; }
+        public string Body { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Application/Features/Templates/Commands/CreateTemplate/CreateTemplateCommandHandler.cs
+//==============================================================================
+namespace NotificationService.Application.Features.Templates.Commands.CreateTemplate
+{
+    using AutoMapper;
+    using MediatR;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Domain.Entities;
+    
+    public class CreateTemplateCommandHandler : IRequestHandler<CreateTemplateCommand, Guid>
+    {
+        private readonly ITemplateRepository _templateRepository;
+        private readonly IMapper _mapper;
+
+        public CreateTemplateCommandHandler(IMapper mapper, ITemplateRepository templateRepository)
+        {
+            _mapper = mapper;
+            _templateRepository = templateRepository;
+        }
+
+        public async Task<Guid> Handle(CreateTemplateCommand request, CancellationToken cancellationToken)
+        {
+            var template = _mapper.Map<Template>(request);
+            template.CreatedAtUtc = DateTime.UtcNow;
+            template = await _templateRepository.AddAsync(template);
+            return template.Id;
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application/Mappings/MappingProfile.cs
+//==============================================================================
+namespace NotificationService.Application.Mappings
+{
+    using AutoMapper;
+    using NotificationService.Application.DTOs;
+    using NotificationService.Application.Features.Templates.Commands.CreateTemplate;
+    using NotificationService.Application.Features.Templates.Queries.GetTemplatesList;
+    using NotificationService.Domain.Entities;
+
+    public class MappingProfile : Profile
+    {
+        public MappingProfile()
+        {
+            CreateMap<Template, TemplateListVm>().ReverseMap();
+            CreateMap<Template, TemplateDto>().ReverseMap();
+            CreateMap<Template, CreateTemplateCommand>().ReverseMap();
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/Persistence/ApplicationDbContext.cs
+//==============================================================================
+namespace NotificationService.Infrastructure.Persistence
+{
+    using Microsoft.EntityFrameworkCore;
+    using NotificationService.Domain.Entities;
+
+    public class ApplicationDbContext : DbContext
+    {
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+        {
+        }
+
+        public DbSet<NotificationLog> NotificationLogs { get; set; }
+        public DbSet<Template> Templates { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+
+            // Configure NotificationLog
+            modelBuilder.Entity<NotificationLog>(b =>
+            {
+                b.HasKey(nl => nl.Id);
+                b.HasIndex(nl => nl.CorrelationId);
+                b.Property(nl => nl.EventName).IsRequired().HasMaxLength(100);
+                b.Property(nl => nl.Channel).IsRequired().HasMaxLength(50);
+                b.Property(nl => nl.Recipient).IsRequired().HasMaxLength(256);
+                b.Property(nl => nl.Status).IsRequired().HasMaxLength(50);
+            });
+
+            // Configure Template
+            modelBuilder.Entity<Template>(b =>
+            {
+                b.HasKey(t => t.Id);
+                b.HasIndex(t => new { t.Name, t.Channel, t.Locale }).IsUnique();
+                b.Property(t => t.Name).IsRequired().HasMaxLength(100);
+                b.Property(t => t.Channel).IsRequired().HasMaxLength(50);
+                b.Property(t => t.Locale).IsRequired().HasMaxLength(10);
+                b.Property(t => t.Subject).HasMaxLength(255);
+            });
+
+            base.OnModelCreating(modelBuilder);
+        }
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/Persistence/Repositories/BaseRepository.cs
+//==============================================================================
+namespace NotificationService.Infrastructure.Persistence.Repositories
+{
+    using Microsoft.EntityFrameworkCore;
+    using NotificationService.Application.Contracts.Persistence;
+    
+    public class BaseRepository<T> : IAsyncRepository<T> where T : class
+    {
+        protected readonly ApplicationDbContext _dbContext;
+
+        public BaseRepository(ApplicationDbContext dbContext)
+        {
+            _dbContext = dbContext;
+        }
+
+        public virtual async Task<T?> GetByIdAsync(Guid id) => await _dbContext.Set<T>().FindAsync(id);
+
+        public async Task<IReadOnlyList<T>> ListAllAsync() => await _dbContext.Set<T>().ToListAsync();
+
+        public async Task<T> AddAsync(T entity)
+        {
+            await _dbContext.Set<T>().AddAsync(entity);
+            await _dbContext.SaveChangesAsync();
+            return entity;
+        }
+
+        public async Task UpdateAsync(T entity)
+        {
+            _dbContext.Entry(entity).State = EntityState.Modified;
+            await _dbContext.SaveChangesAsync();
+        }
+
+        public async Task DeleteAsync(T entity)
+        {
+            _dbContext.Set<T>().Remove(entity);
+            await _dbContext.SaveChangesAsync();
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/Persistence/Repositories/NotificationLogRepository.cs
+//==============================================================================
+namespace NotificationService.Infrastructure.Persistence.Repositories
+{
+    using Microsoft.EntityFrameworkCore;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Domain.Entities;
+
+    public class NotificationLogRepository : BaseRepository<NotificationLog>, INotificationLogRepository
+    {
+        public NotificationLogRepository(ApplicationDbContext dbContext) : base(dbContext)
+        {
+        }
+
+        public async Task<IReadOnlyList<NotificationLog>> GetHistoryByRecipientAsync(string recipient)
+        {
+            return await _dbContext.NotificationLogs
+                .Where(nl => nl.Recipient == recipient)
+                .OrderByDescending(nl => nl.CreatedAtUtc)
+                .ToListAsync();
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/Persistence/Repositories/TemplateRepository.cs
+//==============================================================================
+namespace NotificationService.Infrastructure.Persistence.Repositories
+{
+    using Microsoft.EntityFrameworkCore;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Domain.Entities;
+
+    public class TemplateRepository : BaseRepository<Template>, ITemplateRepository
+    {
+        public TemplateRepository(ApplicationDbContext dbContext) : base(dbContext)
+        {
+        }
+
+        public async Task<Template?> GetTemplateAsync(string name, string channel, string locale)
+        {
+            return await _dbContext.Templates
+                .FirstOrDefaultAsync(t => t.Name == name && t.Channel == channel && t.Locale == locale && t.IsActive);
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/Mail/SendGridEmailProvider.cs
+//==============================================================================
+namespace NotificationService.Infrastructure.Mail
+{
+    using Microsoft.Extensions.Logging;
+    using NotificationService.Application.Contracts.Infrastructure;
+
+    /// <summary>
+    /// Placeholder implementation for an Email Provider.
+    /// Logs to console instead of making a real API call.
+    /// </summary>
+    public class SendGridEmailProvider : IEmailProvider
+    {
+        private readonly ILogger<SendGridEmailProvider> _logger;
+
+        public SendGridEmailProvider(ILogger<SendGridEmailProvider> logger)
+        {
+            _logger = logger;
+        }
+
+        public Task<string> SendEmailAsync(string to, string subject, string body)
+        {
+            _logger.LogInformation("--- Sending Email (Placeholder) ---");
+            _logger.LogInformation("To: {To}", to);
+            _logger.LogInformation("Subject: {Subject}", subject);
+            _logger.LogInformation("Body: {Body}", body);
+            _logger.LogInformation("--- Email Sent ---");
+            
+            return Task.FromResult("Success");
+        }
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/Sms/TwilioSmsProvider.cs
+//==============================================================================
+namespace NotificationService.Infrastructure.Sms
+{
+    using Microsoft.Extensions.Logging;
+    using NotificationService.Application.Contracts.Infrastructure;
+
+    /// <summary>
+    /// Placeholder implementation for an SMS Provider.
+    /// Logs to console instead of making a real API call.
+    /// </summary>
+    public class TwilioSmsProvider : ISmsProvider
+    {
+        private readonly ILogger<TwilioSmsProvider> _logger;
+
+        public TwilioSmsProvider(ILogger<TwilioSmsProvider> logger)
+        {
+            _logger = logger;
+        }
+        
+        public Task<string> SendSmsAsync(string to, string message)
+        {
+            _logger.LogInformation("--- Sending SMS (Placeholder) ---");
+            _logger.LogInformation("To: {To}", to);
+            _logger.LogInformation("Message: {Message}", message);
+            _logger.LogInformation("--- SMS Sent ---");
+            
+            return Task.FromResult("Success");
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application/Contracts/Infrastructure/IInMemoryNotificationQueue.cs
+//==============================================================================
+namespace NotificationService.Application.Contracts.Infrastructure
+{
+    using NotificationService.Domain.Entities;
+    
+    public interface IInMemoryNotificationQueue
+    {
+        ValueTask EnqueueAsync(NotificationLog workItem);
+        ValueTask<NotificationLog> DequeueAsync(CancellationToken cancellationToken);
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/Queue/InMemoryNotificationQueue.cs
+//==============================================================================
+namespace NotificationService.Infrastructure.Queue
+{
+    using System.Threading.Channels;
+    using NotificationService.Application.Contracts.Infrastructure;
+    using NotificationService.Domain.Entities;
+
+    public class InMemoryNotificationQueue : IInMemoryNotificationQueue
+    {
+        private readonly Channel<NotificationLog> _queue;
+
+        public InMemoryNotificationQueue()
+        {
+            var options = new BoundedChannelOptions(100)
+            {
+                FullMode = BoundedChannelFullMode.Wait
+            };
+            _queue = Channel.CreateBounded<NotificationLog>(options);
+        }
+
+        public async ValueTask EnqueueAsync(NotificationLog workItem)
+        {
+            if (workItem == null) throw new ArgumentNullException(nameof(workItem));
+            await _queue.Writer.WriteAsync(workItem);
+        }
+
+        public async ValueTask<NotificationLog> DequeueAsync(CancellationToken cancellationToken)
+        {
+            return await _queue.Reader.ReadAsync(cancellationToken);
+        }
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/Queue/QueuedNotificationProcessor.cs
+//==============================================================================
+namespace NotificationService.Infrastructure.Queue
+{
+    using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Hosting;
+    using Microsoft.Extensions.Logging;
+    using HandlebarsDotNet;
+    using System.Text.Json;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Application.Contracts.Infrastructure;
+    
+    public class QueuedNotificationProcessor : BackgroundService
+    {
+        private readonly ILogger<QueuedNotificationProcessor> _logger;
+        private readonly IServiceProvider _serviceProvider;
+
+        public QueuedNotificationProcessor(ILogger<QueuedNotificationProcessor> logger, IServiceProvider serviceProvider)
+        {
+            _logger = logger;
+            _serviceProvider = serviceProvider;
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Queued Notification Processor is running.");
+
+            await ProcessQueue(stoppingToken);
+        }
+
+        private async Task ProcessQueue(CancellationToken stoppingToken)
+        {
+            // We must create a new scope for each processing loop to resolve scoped services
+            // like DbContext and repositories correctly.
+            using var scope = _serviceProvider.CreateScope();
+            var queue = scope.ServiceProvider.GetRequiredService<IInMemoryNotificationQueue>();
+            
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    var workItem = await queue.DequeueAsync(stoppingToken);
+                    
+                    using var processingScope = _serviceProvider.CreateScope();
+                    await ProcessWorkItem(processingScope.ServiceProvider, workItem);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Prevent throwing if stoppingToken was signaled
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error occurred processing a notification.");
+                }
+            }
+        }
+
+        private async Task ProcessWorkItem(IServiceProvider sp, Domain.Entities.NotificationLog log)
+        {
+            var logRepo = sp.GetRequiredService<INotificationLogRepository>();
+            var templateRepo = sp.GetRequiredService<ITemplateRepository>();
+            
+            log.Status = "Processing";
+            await logRepo.UpdateAsync(log);
+
+            // Deserialize payload to get template info
+            var payload = JsonSerializer.Deserialize<Application.DTOs.NotificationRequestDto>(log.Payload);
+            if (payload == null) {
+                log.Status = "Failed";
+                log.ProviderResponse = "Invalid payload.";
+                await logRepo.UpdateAsync(log);
+                return;
+            }
+
+            // Fetch template
+            var template = await templateRepo.GetTemplateAsync(payload.Event.Name, log.Channel, payload.Event.Locale);
+            if (template == null)
+            {
+                log.Status = "Failed";
+                log.ProviderResponse = $"Template not found for {payload.Event.Name}/{log.Channel}/{payload.Event.Locale}";
+                await logRepo.UpdateAsync(log);
+                return;
+            }
+
+            // Render template
+            var compiledTemplate = Handlebars.Compile(template.Body);
+            var renderedBody = compiledTemplate(payload.Event.Data);
+            log.TemplateContent = renderedBody;
+
+            // Send via provider
+            string response = "Provider not found for channel.";
+            try 
+            {
+                if (log.Channel.Equals("Email", StringComparison.OrdinalIgnoreCase))
+                {
+                    var provider = sp.GetRequiredService<IEmailProvider>();
+                    response = await provider.SendEmailAsync(log.Recipient, template.Subject ?? "Notification", renderedBody);
+                }
+                else if (log.Channel.Equals("Sms", StringComparison.OrdinalIgnoreCase))
+                {
+                    var provider = sp.GetRequiredService<ISmsProvider>();
+                    response = await provider.SendSmsAsync(log.Recipient, renderedBody);
+                }
+
+                log.Status = "Sent";
+                log.ProviderResponse = response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Provider failed to send notification {Id}", log.Id);
+                log.Status = "Failed";
+                log.ProviderResponse = ex.Message;
+            }
+            
+            log.ProcessedAtUtc = DateTime.UtcNow;
+            await logRepo.UpdateAsync(log);
+        }
+
+        public override async Task StopAsync(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Queued Notification Processor is stopping.");
+            await base.StopAsync(stoppingToken);
+        }
+    }
+}
+
+//==============================================================================
+// FILE: NotificationService.Infrastructure/InfrastructureServiceRegistration.cs
+//==============================================================================
+namespace NotificationService.Infrastructure
+{
+    using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.DependencyInjection;
+    using NotificationService.Application.Contracts.Infrastructure;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Infrastructure.Mail;
+    using NotificationService.Infrastructure.Persistence;
+    using NotificationService.Infrastructure.Persistence.Repositories;
+    using NotificationService.Infrastructure.Queue;
+    using NotificationService.Infrastructure.Sms;
+
+    public static class InfrastructureServiceRegistration
+    {
+        public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
+        {
+            services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+
+            services.AddScoped(typeof(IAsyncRepository<>), typeof(BaseRepository<>));
+            services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
+            services.AddScoped<ITemplateRepository, TemplateRepository>();
+            
+            services.AddTransient<IEmailProvider, SendGridEmailProvider>();
+            services.AddTransient<ISmsProvider, TwilioSmsProvider>();
+
+            // Register in-memory queue and processor
+            services.AddSingleton<IInMemoryNotificationQueue, InMemoryNotificationQueue>();
+            services.AddHostedService<QueuedNotificationProcessor>();
+            
+            return services;
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Api/Controllers/NotificationsController.cs
+//==============================================================================
+namespace NotificationService.Api.Controllers
+{
+    using MediatR;
+    using Microsoft.AspNetCore.Authorization;
+    using Microsoft.AspNetCore.Mvc;
+    using NotificationService.Application.DTOs;
+    using NotificationService.Application.Features.Notifications.Commands.SendNotification;
+
+    [ApiController]
+    [Route("v1/[controller]")]
+    [Authorize] // <-- SECURE ALL ENDPOINTS IN THIS CONTROLLER
+    public class NotificationsController : ControllerBase
+    {
+        private readonly IMediator _mediator;
+
+        public NotificationsController(IMediator mediator)
+        {
+            _mediator = mediator;
+        }
+
+        [HttpPost("/v1/notify")]
+        [ProducesResponseType(StatusCodes.Status202Accepted)]
+        public async Task<IActionResult> SendNotification([FromBody] NotificationRequestDto notificationRequest)
+        {
+            var command = new SendNotificationCommand { NotificationRequest = notificationRequest };
+            var correlationId = await _mediator.Send(command);
+            
+            return Accepted(new { CorrelationId = correlationId });
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Api/Controllers/TemplatesController.cs
+//==============================================================================
+namespace NotificationService.Api.Controllers
+{
+    using MediatR;
+    using Microsoft.AspNetCore.Authorization;
+    using Microsoft.AspNetCore.Mvc;
+    using NotificationService.Application.Features.Templates.Commands.CreateTemplate;
+    using NotificationService.Application.Features.Templates.Queries.GetTemplatesList;
+    
+    [ApiController]
+    [Route("v1/[controller]")]
+    [Authorize] // <-- SECURE ALL ENDPOINTS IN THIS CONTROLLER
+    public class TemplatesController : ControllerBase
+    {
+        private readonly IMediator _mediator;
+
+        public TemplatesController(IMediator mediator)
+        {
+            _mediator = mediator;
+        }
+
+        [HttpGet(Name = "GetAllTemplates")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<ActionResult<List<TemplateListVm>>> GetAllTemplates()
+        {
+            var dtos = await _mediator.Send(new GetTemplatesListQuery());
+            return Ok(dtos);
+        }
+
+        [HttpPost(Name = "AddTemplate")]
+        public async Task<ActionResult<Guid>> Create([FromBody] CreateTemplateCommand createTemplateCommand)
+        {
+            var id = await _mediator.Send(createTemplateCommand);
+            return Ok(id);
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Api/Program.cs
+//==============================================================================
+using Microsoft.AspNetCore.Authentication;
+using NotificationService.Api.Authentication;
+using NotificationService.Infrastructure;
+using System.Reflection;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+
+// Bind SecuritySettings from appsettings.json
+builder.Services.Configure<SecuritySettings>(builder.Configuration.GetSection("SecuritySettings"));
+
+// Register Infrastructure services (DbContext, Repositories, etc.)
+builder.Services.AddInfrastructureServices(builder.Configuration);
+
+// Register Application services
+builder.Services.AddAutoMapper(Assembly.GetExecutingAssembly(), typeof(NotificationService.Application.Mappings.MappingProfile).Assembly);
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(NotificationService.Application.Contracts.Persistence.IAsyncRepository<>).Assembly));
+
+// Add Authentication services
+builder.Services.AddAuthentication("BasicAuthentication")
+    .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>("BasicAuthentication", null);
+builder.Services.AddAuthorization();
+
+
+builder.Services.AddControllers();
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+
+// Add Authentication and Authorization middleware
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
+
+
+//==============================================================================
+//==============================================================================
+// UNIT TEST PROJECT
+//==============================================================================
+//==============================================================================
+
+
+//==============================================================================
+// FILE: NotificationService.Application.UnitTests/Mocks/MockRepository.cs
+//==============================================================================
+namespace NotificationService.Application.UnitTests.Mocks
+{
+    using Moq;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Domain.Entities;
+    
+    public static class MockRepository
+    {
+        public static Mock<ITemplateRepository> GetTemplateRepository()
+        {
+            var templates = new List<Template>
+            {
+                new Template
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "TestEvent",
+                    Channel = "Email",
+                    Locale = "en-GB",
+                    Subject = "Test Subject",
+                    Body = "Hello {{name}}",
+                    IsActive = true,
+                    CreatedAtUtc = DateTime.UtcNow
+                },
+                new Template
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "TestEvent",
+                    Channel = "Sms",
+                    Locale = "en-GB",
+                    Body = "Hi {{name}}",
+                    IsActive = true,
+                    CreatedAtUtc = DateTime.UtcNow
+                }
+            };
+
+            var mockTemplateRepository = new Mock<ITemplateRepository>();
+            
+            mockTemplateRepository.Setup(repo => repo.ListAllAsync()).ReturnsAsync(templates);
+
+            mockTemplateRepository.Setup(repo => repo.AddAsync(It.IsAny<Template>())).ReturnsAsync((Template template) =>
+            {
+                template.Id = Guid.NewGuid();
+                templates.Add(template);
+                return template;
+            });
+
+            return mockTemplateRepository;
+        }
+
+        public static Mock<INotificationLogRepository> GetNotificationLogRepository()
+        {
+            var mockNotificationLogRepository = new Mock<INotificationLogRepository>();
+            return mockNotificationLogRepository;
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application.UnitTests/Features/Notifications/Commands/SendNotificationCommandHandlerTests.cs
+//==============================================================================
+namespace NotificationService.Application.UnitTests.Features.Notifications.Commands
+{
+    using Moq;
+    using Xunit;
+    using FluentAssertions;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Application.Contracts.Infrastructure;
+    using NotificationService.Application.Features.Notifications.Commands.SendNotification;
+    using NotificationService.Application.DTOs;
+    using NotificationService.Domain.Entities;
+    using NotificationService.Application.UnitTests.Mocks;
+
+    public class SendNotificationCommandHandlerTests
+    {
+        private readonly Mock<INotificationLogRepository> _mockLogRepo;
+        private readonly Mock<IInMemoryNotificationQueue> _mockQueue;
+        private readonly SendNotificationCommandHandler _handler;
+
+        public SendNotificationCommandHandlerTests()
+        {
+            _mockLogRepo = MockRepository.GetNotificationLogRepository();
+            _mockQueue = new Mock<IInMemoryNotificationQueue>();
+            _handler = new SendNotificationCommandHandler(_mockLogRepo.Object, _mockQueue.Object);
+        }
+
+        [Fact]
+        public async Task Handle_ShouldCreateLogAndEnqueue_ForSingleChannel()
+        {
+            // Arrange
+            var command = new SendNotificationCommand
+            {
+                NotificationRequest = new NotificationRequestDto
+                {
+                    Recipient = new RecipientDto { Email = new EmailDto { To = new List<string> { "test@example.com" } } },
+                    Event = new EventDto { Name = "TestEvent" },
+                    Overrides = new OverrideDto { Channels = new List<string> { "Email" } }
+                }
+            };
+            NotificationLog? capturedLog = null;
+
+            _mockLogRepo.Setup(r => r.AddAsync(It.IsAny<NotificationLog>()))
+                .Callback<NotificationLog>(log => capturedLog = log)
+                .ReturnsAsync((NotificationLog log) => log);
+
+            // Act
+            var result = await _handler.Handle(command, CancellationToken.None);
+
+            // Assert
+            result.Should().Be(command.NotificationRequest.Metadata.CorrelationId);
+            
+            _mockLogRepo.Verify(r => r.AddAsync(It.IsAny<NotificationLog>()), Times.Once);
+            _mockQueue.Verify(q => q.EnqueueAsync(It.IsAny<NotificationLog>()), Times.Once);
+
+            capturedLog.Should().NotBeNull();
+            capturedLog?.Status.Should().Be("Queued");
+            capturedLog?.Channel.Should().Be("Email");
+            capturedLog?.Recipient.Should().Be("test@example.com");
+        }
+        
+        [Fact]
+        public async Task Handle_ShouldCreateMultipleLogsAndEnqueue_ForMultipleChannels()
+        {
+            // Arrange
+            var command = new SendNotificationCommand
+            {
+                NotificationRequest = new NotificationRequestDto
+                {
+                    Recipient = new RecipientDto { 
+                        Email = new EmailDto { To = new List<string> { "test@example.com" } },
+                        PhoneNumber = "1234567890"
+                    },
+                    Event = new EventDto { Name = "TestEvent" },
+                    Overrides = new OverrideDto { Channels = new List<string> { "Email", "Sms" } }
+                }
+            };
+            var capturedLogs = new List<NotificationLog>();
+
+            _mockLogRepo.Setup(r => r.AddAsync(It.IsAny<NotificationLog>()))
+                .Callback<NotificationLog>(log => capturedLogs.Add(log))
+                .ReturnsAsync((NotificationLog log) => log);
+
+            // Act
+            var result = await _handler.Handle(command, CancellationToken.None);
+
+            // Assert
+            result.Should().Be(command.NotificationRequest.Metadata.CorrelationId);
+            
+            _mockLogRepo.Verify(r => r.AddAsync(It.IsAny<NotificationLog>()), Times.Exactly(2));
+            _mockQueue.Verify(q => q.EnqueueAsync(It.IsAny<NotificationLog>()), Times.Exactly(2));
+
+            capturedLogs.Should().HaveCount(2);
+            capturedLogs.Should().Contain(l => l.Channel == "Email" && l.Recipient == "test@example.com");
+            capturedLogs.Should().Contain(l => l.Channel == "Sms" && l.Recipient == "1234567890");
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application.UnitTests/Features/Templates/Queries/GetTemplatesListQueryHandlerTests.cs
+//==============================================================================
+namespace NotificationService.Application.UnitTests.Features.Templates.Queries
+{
+    using AutoMapper;
+    using Moq;
+    using Xunit;
+    using FluentAssertions;
+    using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Application.Mappings;
+    using NotificationService.Application.Features.Templates.Queries.GetTemplatesList;
+    using NotificationService.Domain.Entities;
+    using NotificationService.Application.UnitTests.Mocks;
+
+    public class GetTemplatesListQueryHandlerTests
+    {
+        private readonly IMapper _mapper;
+        private readonly Mock<ITemplateRepository> _mockRepo;
+
+        public GetTemplatesListQueryHandlerTests()
+        {
+            _mockRepo = MockRepository.GetTemplateRepository();
+            var mapperConfig = new MapperConfiguration(c =>
+            {
+                c.AddProfile<MappingProfile>();
+            });
+            _mapper = mapperConfig.CreateMapper();
+        }
+
+        [Fact]
+        public async Task GetTemplatesListTest()
+        {
+            // Arrange
+            var handler = new GetTemplatesListQueryHandler(_mapper, _mockRepo.Object);
+
+            // Act
+            var result = await handler.Handle(new GetTemplatesListQuery(), CancellationToken.None);
+            
+            // Assert
+            result.Should().BeOfType<List<TemplateListVm>>();
+            result.Should().HaveCount(2);
+        }
+    }
+}
+
+
+//==============================================================================
+// FILE: NotificationService.Application.UnitTests/Features/Templates/Commands/CreateTemplateCommandHandlerTests.cs
+//==============================================================================
+namespace NotificationService.Application.UnitTests.Features.Templates.Commands
+{
+    using AutoMapper;
+    using Moq;
+    using Xunit;
+    using FluentAssertions;
+    using NotificationService.Application.Contracts.Persistence;
+    using Application.Mappings;
+    using NotificationService.Application.Features.Templates.Commands.CreateTemplate;
+    using NotificationService.Domain.Entities;
+    using NotificationService.Application.UnitTests.Mocks;
+    
+    public class CreateTemplateCommandHandlerTests
+    {
+        private readonly IMapper _mapper;
+        private readonly Mock<ITemplateRepository> _mockRepo;
+
+        public CreateTemplateCommandHandlerTests()
+        {
+             _mockRepo = MockRepository.GetTemplateRepository();
+            var mapperConfig = new MapperConfiguration(c =>
+            {
+                c.AddProfile<MappingProfile>();
+            });
+            _mapper = mapperConfig.CreateMapper();
+        }
+        
+        [Fact]
+        public async Task Handle_ValidTemplate_AddedToRepo()
+        {
+            // Arrange
+            var handler = new CreateTemplateCommandHandler(_mapper, _mockRepo.Object);
+            var command = new CreateTemplateCommand() { Name = "NewTemplate", Channel = "Email", Locale="en-GB", Body = "Body" };
+
+            // Act
+            var result = await handler.Handle(command, CancellationToken.None);
+
+            // Assert
+            var allTemplates = await _mockRepo.Object.ListAllAsync();
+            result.Should().NotBe(Guid.Empty);
+            allTemplates.Should().HaveCount(3);
+            allTemplates.Should().Contain(t => t.Name == "NewTemplate");
+        }
+    }
+}
