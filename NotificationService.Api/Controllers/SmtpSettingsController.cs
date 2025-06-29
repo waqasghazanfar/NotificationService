@@ -3,12 +3,13 @@
     using MediatR;
     using Microsoft.AspNetCore.Authorization;
     using Microsoft.AspNetCore.Mvc;
+    using NotificationService.Api.Authentication;
     using NotificationService.Application.Features.SmtpSettings.Commands.CreateSmtpSetting;
     using NotificationService.Application.Features.SmtpSettings.Commands.UpdateSmtpSetting;
 
     [ApiController]
     [Route("v1/[controller]")]
-    [Authorize]
+    [ApiKey] // Apply the API Key authentication to the whole controller
     public class SmtpSettingsController : ControllerBase
     {
         private readonly IMediator _mediator;

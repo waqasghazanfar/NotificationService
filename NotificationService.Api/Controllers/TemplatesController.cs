@@ -3,12 +3,13 @@
     using MediatR;
     using Microsoft.AspNetCore.Authorization;
     using Microsoft.AspNetCore.Mvc;
+    using NotificationService.Api.Authentication;
     using NotificationService.Application.Features.Templates.Commands.CreateTemplate;
     using NotificationService.Application.Features.Templates.Queries.GetTemplatesList;
 
     [ApiController]
     [Route("v1/[controller]")]
-    [Authorize]
+    [ApiKey] // Apply the API Key authentication to the whole controller
     public class TemplatesController : ControllerBase
     {
         private readonly IMediator _mediator;

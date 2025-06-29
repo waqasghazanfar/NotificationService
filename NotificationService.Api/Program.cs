@@ -1,15 +1,14 @@
+using AutoMapper;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.OpenApi.Models;
 using NotificationService.Api.Authentication;
 using NotificationService.Infrastructure;
 using System.Reflection;
-using AutoMapper;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-// Bind SecuritySettings from appsettings.json
-builder.Services.Configure<SecuritySettings>(builder.Configuration.GetSection("SecuritySettings"));
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
 // Register Application services
@@ -21,42 +20,71 @@ builder.Services.AddAutoMapper((IMapperConfigurationExpression cfg) => cfg.AddMa
 
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(NotificationService.Application.Contracts.Persistence.IAsyncRepository<>).Assembly));
 
-builder.Services.AddAuthentication("BasicAuthentication")
-    .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>("BasicAuthentication", null);
-builder.Services.AddAuthorization();
+var apiKeyAuthConfig = builder.Configuration.GetSection("ApiKeyAuthentication");
+
+builder.Services.AddAuthentication()
+    .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationOptions.DefaultScheme, null);
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(ApiKeyAuthenticationOptions.PolicyName, policy =>
+    {
+        if (apiKeyAuthConfig.GetValue<bool>("Enabled"))
+        {
+            policy.AddAuthenticationSchemes(ApiKeyAuthenticationOptions.DefaultScheme);
+            policy.RequireAuthenticatedUser();
+        }
+        else
+        {
+            // If API key auth is disabled, the policy still exists but allows all requests.
+            policy.RequireAssertion(context => true);
+        }
+    });
+});
 
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-//builder.Services.AddSwaggerGen(c =>
-//{
-//    c.SwaggerDoc("v1", new OpenApiInfo { Title = "NotificationService API", Version = "v1" });
 
-//    c.AddSecurityDefinition("Basic", new OpenApiSecurityScheme
-//    {
-//        Name = "Authorization",
-//        Type = SecuritySchemeType.Http,
-//        Scheme = "basic",
-//        In = ParameterLocation.Header,
-//        Description = "Basic Authorization header using ClientId and ClientSecret"
-//    });
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Keycloak Admin API", Version = "v1" });
 
-//    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-//    {
-//        {
-//            new OpenApiSecurityScheme
-//            {
-//                Reference = new OpenApiReference
-//                {
-//                    Type = ReferenceType.SecurityScheme,
-//                    Id = "Basic"
-//                }
-//            },
-//            new string[] {}
-//        }
-//    });
-//});
+    // **CORRECTED:** Define two separate security schemes for ClientId and ClientSecret.
+    c.AddSecurityDefinition("ClientId", new OpenApiSecurityScheme
+    {
+        Name = ApiKeyAuthenticationHandler.ClientIdHeaderName,
+        Type = SecuritySchemeType.ApiKey,
+        In = ParameterLocation.Header,
+        Description = "The Client ID for this API."
+    });
+    c.AddSecurityDefinition("ClientSecret", new OpenApiSecurityScheme
+    {
+        Name = ApiKeyAuthenticationHandler.ClientSecretHeaderName,
+        Type = SecuritySchemeType.ApiKey,
+        In = ParameterLocation.Header,
+        Description = "The Client Secret for this API."
+    });
+
+    // **CORRECTED:** Require both schemes to be present.
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "ClientId" }
+            },
+            new string[] {}
+        },
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "ClientSecret" }
+            },
+            new string[] {}
+        }
+    });
+});
 
 var app = builder.Build();
 

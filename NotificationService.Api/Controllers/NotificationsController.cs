@@ -3,13 +3,14 @@
     using MediatR;
     using Microsoft.AspNetCore.Authorization;
     using Microsoft.AspNetCore.Mvc;
+    using NotificationService.Api.Authentication;
     using NotificationService.Application.DTOs;
     using NotificationService.Application.Features.Notifications.Commands.SendNotification;
     using NotificationService.Application.Features.Notifications.Queries.GetNotificationsByCorrelationId;
 
     [ApiController]
     [Route("v1/[controller]")]
-    [Authorize]
+    [ApiKey] // Apply the API Key authentication to the whole controller
     public class NotificationsController : ControllerBase
     {
         private readonly IMediator _mediator;
