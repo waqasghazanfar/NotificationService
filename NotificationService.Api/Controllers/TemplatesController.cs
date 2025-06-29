@@ -8,7 +8,7 @@
     using NotificationService.Application.Features.Templates.Queries.GetTemplatesList;
 
     [ApiController]
-    [Route("v1/[controller]")]
+    [Route("api/template")]
     [ApiKey] // Apply the API Key authentication to the whole controller
     public class TemplatesController : ControllerBase
     {
@@ -19,7 +19,7 @@
             _mediator = mediator;
         }
 
-        [HttpGet(Name = "GetAllTemplates")]
+        [HttpGet(Name = "Templates")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<List<TemplateListVm>>> GetAllTemplates()
         {
@@ -27,7 +27,7 @@
             return Ok(dtos);
         }
 
-        [HttpPost(Name = "AddTemplate")]
+        [HttpPost(Name = "Template")]
         public async Task<ActionResult<Guid>> Create([FromBody] CreateTemplateCommand createTemplateCommand)
         {
             var id = await _mediator.Send(createTemplateCommand);
