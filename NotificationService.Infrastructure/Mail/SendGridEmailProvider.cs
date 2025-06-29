@@ -1,6 +1,8 @@
 ﻿namespace NotificationService.Infrastructure.Mail
 {
+    using MailKit.Net.Smtp;
     using Microsoft.Extensions.Logging;
+    using MimeKit;
     using NotificationService.Application.Contracts.Infrastructure;
 
     /// <summary>
@@ -16,15 +18,37 @@
             _logger = logger;
         }
 
-        public Task<string> SendEmailAsync(string to, string subject, string body)
+        public async Task<string> SendEmailAsync(string to, string subject, string body)
         {
-            _logger.LogInformation("--- Sending Email (Placeholder) ---");
-            _logger.LogInformation("To: {To}", to);
-            _logger.LogInformation("Subject: {Subject}", subject);
-            _logger.LogInformation("Body: {Body}", body);
-            _logger.LogInformation("--- Email Sent ---");
+            try
+            {
+                var message = new MimeMessage();
+                message.From.Add(new MailboxAddress("My App", "noreply@example.com")); // Sender Name & Email
+                message.To.Add(MailboxAddress.Parse(to));
+                message.Subject = subject;
 
-            return Task.FromResult("Success");
+                message.Body = new TextPart("plain")
+                {
+                    Text = body
+                };
+
+                using var client = new SmtpClient();
+
+                // Hardcoded SMTP settings for now
+                await client.ConnectAsync("smtp.gmail.com", 587, MailKit.Security.SecureSocketOptions.StartTls);
+                await client.AuthenticateAsync("hammad.hassan@purelogics.com", "jdmlpulryhkaekca");
+
+                await client.SendAsync(message);
+                await client.DisconnectAsync(true);
+
+                _logger.LogInformation("Email sent to {To} successfully.", to);
+                return "Success";
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send email to {To}", to);
+                return "Failed";
+            }
         }
     }
 }
