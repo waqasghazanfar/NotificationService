@@ -10,6 +10,6 @@
         public DateTime? EndDate { get; set; }
         public string? EventName { get; set; }
         public Guid? SmtpSettingId { get; set; }
-        public string? UserId { get; set; } // <-- ADDED
+        public string? UserId { get; set; } 
     }
 }

@@ -4,7 +4,7 @@
     {
         public Guid Id { get; set; }
         public Guid CorrelationId { get; set; }
-        public string? UserId { get; set; } // <-- ADDED
+        public string? UserId { get; set; }
         public string EventName { get; set; } = string.Empty;
         public string Channel { get; set; } = string.Empty;
         public string Recipient { get; set; } = string.Empty;

@@ -24,7 +24,7 @@
                 request.EndDate,
                 request.EventName,
                 request.SmtpSettingId,
-                request.UserId); // <-- PASS USER ID
+                request.UserId); 
 
             return _mapper.Map<List<NotificationLogDto>>(logs);
         }
