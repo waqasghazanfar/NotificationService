@@ -29,13 +29,9 @@
         [Fact]
         public async Task GetTemplatesListTest()
         {
-            // Arrange
             var handler = new GetTemplatesListQueryHandler(_mapper, _mockRepo.Object);
-
-            // Act
             var result = await handler.Handle(new GetTemplatesListQuery(), CancellationToken.None);
 
-            // Assert
             result.Should().BeOfType<List<TemplateListVm>>();
             result.Should().HaveCount(2);
         }

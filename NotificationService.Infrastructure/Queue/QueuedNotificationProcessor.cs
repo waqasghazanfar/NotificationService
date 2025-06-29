@@ -7,50 +7,63 @@
     using System.Text.Json;
     using NotificationService.Application.Contracts.Persistence;
     using NotificationService.Application.Contracts.Infrastructure;
-    using NotificationService.Domain.Enums;
 
     public class QueuedNotificationProcessor : BackgroundService
     {
         private readonly ILogger<QueuedNotificationProcessor> _logger;
         private readonly IServiceProvider _serviceProvider;
+        private readonly IInMemoryNotificationQueue _signalQueue;
 
-        public QueuedNotificationProcessor(ILogger<QueuedNotificationProcessor> logger, IServiceProvider serviceProvider)
+        public QueuedNotificationProcessor(
+            ILogger<QueuedNotificationProcessor> logger,
+            IServiceProvider serviceProvider,
+            IInMemoryNotificationQueue signalQueue)
         {
             _logger = logger;
             _serviceProvider = serviceProvider;
+            _signalQueue = signalQueue;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Queued Notification Processor is running.");
 
-            await ProcessQueue(stoppingToken);
-        }
-
-        private async Task ProcessQueue(CancellationToken stoppingToken)
-        {
-            // We must create a new scope for each processing loop to resolve scoped services
-            // like DbContext and repositories correctly.
-            using var scope = _serviceProvider.CreateScope();
-            var queue = scope.ServiceProvider.GetRequiredService<IInMemoryNotificationQueue>();
-
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    var workItem = await queue.DequeueAsync(stoppingToken);
-
-                    using var processingScope = _serviceProvider.CreateScope();
-                    await ProcessWorkItem(processingScope.ServiceProvider, workItem);
+                    await _signalQueue.DequeueAsync(stoppingToken);
+                    await ProcessDatabaseQueue(stoppingToken);
                 }
                 catch (OperationCanceledException)
                 {
-                    // Prevent throwing if stoppingToken was signaled
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error occurred processing a notification.");
+                    _logger.LogError(ex, "An error occurred in the queue processing loop.");
+                    await Task.Delay(5000, stoppingToken);
                 }
+            }
+        }
+
+        private async Task ProcessDatabaseQueue(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Checking database for due notifications.");
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var logRepo = scope.ServiceProvider.GetRequiredService<INotificationLogRepository>();
+
+                var log = await logRepo.GetNextDueNotificationAsync();
+
+                if (log == null)
+                {
+                    _logger.LogInformation("No due notifications found. Waiting for next signal.");
+                    break;
+                }
+
+                await ProcessWorkItem(scope.ServiceProvider, log);
             }
         }
 
@@ -59,10 +72,11 @@
             var logRepo = sp.GetRequiredService<INotificationLogRepository>();
             var templateRepo = sp.GetRequiredService<ITemplateRepository>();
 
+            _logger.LogInformation("Processing notification {Id} with priority {Priority}", log.Id, log.Priority);
+
             log.Status = "Processing";
             await logRepo.UpdateAsync(log);
 
-            // Deserialize payload to get template info
             var payload = JsonSerializer.Deserialize<Application.DTOs.NotificationRequestDto>(log.Payload);
             if (payload == null)
             {
@@ -72,7 +86,6 @@
                 return;
             }
 
-            // Fetch template
             var template = await templateRepo.GetTemplateAsync(payload.Event.Name, log.Channel, payload.Event.Locale);
             if (template == null)
             {
@@ -82,21 +95,19 @@
                 return;
             }
 
-            // Render template
             var compiledTemplate = Handlebars.Compile(template.Body);
             var renderedBody = compiledTemplate(payload.Event.Data);
             log.TemplateContent = renderedBody;
 
-            // Send via provider
             string response = "Provider not found for channel.";
             try
             {
-                if (log.Channel == ChannelType.Email)
+                if (log.Channel.Equals("Email", StringComparison.OrdinalIgnoreCase))
                 {
                     var provider = sp.GetRequiredService<IEmailProvider>();
-                    response = await provider.SendEmailAsync(log.Recipient, template.Subject ?? "Notification", renderedBody);
+                    response = await provider.SendEmailAsync(log.Recipient, template.Subject ?? "Notification", renderedBody, log.SmtpSettingId);
                 }
-                else if (log.Channel == ChannelType.Sms)
+                else if (log.Channel.Equals("Sms", StringComparison.OrdinalIgnoreCase))
                 {
                     var provider = sp.GetRequiredService<ISmsProvider>();
                     response = await provider.SendSmsAsync(log.Recipient, renderedBody);

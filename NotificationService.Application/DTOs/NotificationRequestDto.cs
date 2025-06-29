@@ -1,11 +1,4 @@
-﻿using NotificationService.Domain.Enums;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace NotificationService.Application.DTOs
+﻿namespace NotificationService.Application.DTOs
 {
     public class NotificationRequestDto
     {
@@ -40,10 +33,13 @@ namespace NotificationService.Application.DTOs
     public class MetadataDto
     {
         public Guid CorrelationId { get; set; } = Guid.NewGuid();
+        public string Priority { get; set; } = "Low";
+        public DateTime? ScheduleAtUtc { get; set; }
+        public Guid? SmtpSettingId { get; set; }
     }
 
     public class OverrideDto
     {
-        public List<ChannelType> Channels { get; set; } = new();
+        public List<string> Channels { get; set; } = new();
     }
 }

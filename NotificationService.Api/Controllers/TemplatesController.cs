@@ -8,7 +8,7 @@
 
     [ApiController]
     [Route("v1/[controller]")]
-    [Authorize] // <-- SECURE ALL ENDPOINTS IN THIS CONTROLLER
+    [Authorize]
     public class TemplatesController : ControllerBase
     {
         private readonly IMediator _mediator;

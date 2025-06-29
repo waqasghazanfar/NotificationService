@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace NotificationService.Application.Contracts.Persistence
+﻿namespace NotificationService.Application.Contracts.Persistence
 {
     public interface IAsyncRepository<T> where T : class
     {

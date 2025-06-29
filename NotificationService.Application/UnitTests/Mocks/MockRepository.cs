@@ -3,7 +3,6 @@
     using Moq;
     using NotificationService.Application.Contracts.Persistence;
     using NotificationService.Domain.Entities;
-    using NotificationService.Domain.Enums;
 
     public static class MockRepository
     {
@@ -15,7 +14,7 @@
                 {
                     Id = Guid.NewGuid(),
                     Name = "TestEvent",
-                    Channel = ChannelType.Email,
+                    Channel = "Email",
                     Locale = "en-GB",
                     Subject = "Test Subject",
                     Body = "Hello {{name}}",
@@ -26,7 +25,7 @@
                 {
                     Id = Guid.NewGuid(),
                     Name = "TestEvent",
-                    Channel = ChannelType.Sms,
+                    Channel = "Sms",
                     Locale = "en-GB",
                     Body = "Hi {{name}}",
                     IsActive = true,
@@ -52,6 +51,12 @@
         {
             var mockNotificationLogRepository = new Mock<INotificationLogRepository>();
             return mockNotificationLogRepository;
+        }
+
+        public static Mock<ISmtpSettingRepository> GetSmtpSettingRepository()
+        {
+            var mockSmtpSettingRepository = new Mock<ISmtpSettingRepository>();
+            return mockSmtpSettingRepository;
         }
     }
 }

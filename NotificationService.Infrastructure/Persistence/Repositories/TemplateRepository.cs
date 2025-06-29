@@ -3,7 +3,6 @@
     using Microsoft.EntityFrameworkCore;
     using NotificationService.Application.Contracts.Persistence;
     using NotificationService.Domain.Entities;
-    using NotificationService.Domain.Enums;
 
     public class TemplateRepository : BaseRepository<Template>, ITemplateRepository
     {
@@ -11,7 +10,7 @@
         {
         }
 
-        public async Task<Template?> GetTemplateAsync(string name, ChannelType channel, string locale)
+        public async Task<Template?> GetTemplateAsync(string name, string channel, string locale)
         {
             return await _dbContext.Templates
                 .FirstOrDefaultAsync(t => t.Name == name && t.Channel == channel && t.Locale == locale && t.IsActive);

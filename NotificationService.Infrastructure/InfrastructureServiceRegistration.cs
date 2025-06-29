@@ -21,11 +21,11 @@
             services.AddScoped(typeof(IAsyncRepository<>), typeof(BaseRepository<>));
             services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
             services.AddScoped<ITemplateRepository, TemplateRepository>();
+            services.AddScoped<ISmtpSettingRepository, SmtpSettingRepository>();
 
-            services.AddTransient<IEmailProvider, SendGridEmailProvider>();
+            services.AddTransient<IEmailProvider, SmtpEmailProvider>();
             services.AddTransient<ISmsProvider, TwilioSmsProvider>();
 
-            // Register in-memory queue and processor
             services.AddSingleton<IInMemoryNotificationQueue, InMemoryNotificationQueue>();
             services.AddHostedService<QueuedNotificationProcessor>();
 

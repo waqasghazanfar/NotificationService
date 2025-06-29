@@ -3,7 +3,6 @@ using NotificationService.Api.Authentication;
 using NotificationService.Infrastructure;
 using System.Reflection;
 using AutoMapper;
-using Microsoft.OpenApi.Models; // Explicitly include AutoMapper namespace to avoid ambiguity
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,8 +10,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Bind SecuritySettings from appsettings.json
 builder.Services.Configure<SecuritySettings>(builder.Configuration.GetSection("SecuritySettings"));
-
-// Register Infrastructure services (DbContext, Repositories, etc.)
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
 // Register Application services
@@ -24,7 +21,6 @@ builder.Services.AddAutoMapper((IMapperConfigurationExpression cfg) => cfg.AddMa
 
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(NotificationService.Application.Contracts.Persistence.IAsyncRepository<>).Assembly));
 
-// Add Authentication services
 builder.Services.AddAuthentication("BasicAuthentication")
     .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>("BasicAuthentication", null);
 builder.Services.AddAuthorization();
@@ -32,34 +28,35 @@ builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "NotificationService API", Version = "v1" });
+builder.Services.AddSwaggerGen();
+//builder.Services.AddSwaggerGen(c =>
+//{
+//    c.SwaggerDoc("v1", new OpenApiInfo { Title = "NotificationService API", Version = "v1" });
 
-    c.AddSecurityDefinition("Basic", new OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "basic",
-        In = ParameterLocation.Header,
-        Description = "Basic Authorization header using ClientId and ClientSecret"
-    });
+//    c.AddSecurityDefinition("Basic", new OpenApiSecurityScheme
+//    {
+//        Name = "Authorization",
+//        Type = SecuritySchemeType.Http,
+//        Scheme = "basic",
+//        In = ParameterLocation.Header,
+//        Description = "Basic Authorization header using ClientId and ClientSecret"
+//    });
 
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Basic"
-                }
-            },
-            new string[] {}
-        }
-    });
-});
+//    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+//    {
+//        {
+//            new OpenApiSecurityScheme
+//            {
+//                Reference = new OpenApiReference
+//                {
+//                    Type = ReferenceType.SecurityScheme,
+//                    Id = "Basic"
+//                }
+//            },
+//            new string[] {}
+//        }
+//    });
+//});
 
 var app = builder.Build();
 

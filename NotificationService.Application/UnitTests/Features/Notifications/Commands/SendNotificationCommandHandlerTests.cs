@@ -1,6 +1,4 @@
-﻿using MediatR;
-
-namespace NotificationService.Application.UnitTests.Features.Notifications.Commands
+﻿namespace NotificationService.Application.UnitTests.Features.Notifications.Commands
 {
     using Moq;
     using Xunit;
@@ -12,7 +10,6 @@ namespace NotificationService.Application.UnitTests.Features.Notifications.Comma
     using NotificationService.Domain.Entities;
     using NotificationService.Application.UnitTests.Mocks;
     using MockRepository = Mocks.MockRepository;
-    using NotificationService.Domain.Enums;
 
     public class SendNotificationCommandHandlerTests
     {
@@ -28,16 +25,16 @@ namespace NotificationService.Application.UnitTests.Features.Notifications.Comma
         }
 
         [Fact]
-        public async Task Handle_ShouldCreateLogAndEnqueue_ForSingleChannel()
+        public async Task Handle_ShouldCreateLogAndSignalQueue()
         {
-            // Arrange
             var command = new SendNotificationCommand
             {
                 NotificationRequest = new NotificationRequestDto
                 {
-                    Recipient = new RecipientDto { Email = new EmailDto { To = new List<string> { "test@example.com" } } },
+                    Recipient = new RecipientDto { UserId = "user-123", Email = new EmailDto { To = new List<string> { "test@example.com" } } },
                     Event = new EventDto { Name = "TestEvent" },
-                    Overrides = new OverrideDto { Channels = new List<ChannelType> { ChannelType.Email } }
+                    Overrides = new OverrideDto { Channels = new List<string> { "Email" } },
+                    Metadata = new MetadataDto { Priority = "High", ScheduleAtUtc = DateTime.UtcNow.AddHours(1) }
                 }
             };
             NotificationLog? capturedLog = null;
@@ -46,56 +43,15 @@ namespace NotificationService.Application.UnitTests.Features.Notifications.Comma
                 .Callback<NotificationLog>(log => capturedLog = log)
                 .ReturnsAsync((NotificationLog log) => log);
 
-            // Act
             var result = await _handler.Handle(command, CancellationToken.None);
 
-            // Assert
             result.Should().Be(command.NotificationRequest.Metadata.CorrelationId);
-
             _mockLogRepo.Verify(r => r.AddAsync(It.IsAny<NotificationLog>()), Times.Once);
             _mockQueue.Verify(q => q.EnqueueAsync(It.IsAny<NotificationLog>()), Times.Once);
-
             capturedLog.Should().NotBeNull();
-            capturedLog?.Status.Should().Be("Queued");
-            capturedLog?.Channel.Should().Be(ChannelType.Email);
-            capturedLog?.Recipient.Should().Be("test@example.com");
-        }
-
-        [Fact]
-        public async Task Handle_ShouldCreateMultipleLogsAndEnqueue_ForMultipleChannels()
-        {
-            // Arrange
-            var command = new SendNotificationCommand
-            {
-                NotificationRequest = new NotificationRequestDto
-                {
-                    Recipient = new RecipientDto
-                    {
-                        Email = new EmailDto { To = new List<string> { "test@example.com" } },
-                        PhoneNumber = "1234567890"
-                    },
-                    Event = new EventDto { Name = "TestEvent" },
-                    Overrides = new OverrideDto { Channels = new List<ChannelType> { ChannelType.Email, ChannelType.Sms } }
-                }
-            };
-            var capturedLogs = new List<NotificationLog>();
-
-            _mockLogRepo.Setup(r => r.AddAsync(It.IsAny<NotificationLog>()))
-                .Callback<NotificationLog>(log => capturedLogs.Add(log))
-                .ReturnsAsync((NotificationLog log) => log);
-
-            // Act
-            var result = await _handler.Handle(command, CancellationToken.None);
-
-            // Assert
-            result.Should().Be(command.NotificationRequest.Metadata.CorrelationId);
-
-            _mockLogRepo.Verify(r => r.AddAsync(It.IsAny<NotificationLog>()), Times.Exactly(2));
-            _mockQueue.Verify(q => q.EnqueueAsync(It.IsAny<NotificationLog>()), Times.Exactly(2));
-
-            capturedLogs.Should().HaveCount(2);
-            capturedLogs.Should().Contain(l => l.Channel == ChannelType.Email && l.Recipient == "test@example.com");
-            capturedLogs.Should().Contain(l => l.Channel == ChannelType.Sms && l.Recipient == "1234567890");
+            capturedLog?.UserId.Should().Be("user-123");
+            capturedLog?.Priority.Should().Be("High");
+            capturedLog?.ScheduleAtUtc.Should().Be(command.NotificationRequest.Metadata.ScheduleAtUtc);
         }
     }
 }

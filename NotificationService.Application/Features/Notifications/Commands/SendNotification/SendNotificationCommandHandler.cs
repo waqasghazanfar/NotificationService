@@ -3,63 +3,63 @@
     using MediatR;
     using System.Text.Json;
     using NotificationService.Application.Contracts.Persistence;
-    using NotificationService.Application.Contracts.Infrastructure;
     using NotificationService.Domain.Entities;
-    using NotificationService.Domain.Enums;
+    using NotificationService.Application.Contracts.Infrastructure;
 
     public class SendNotificationCommandHandler : IRequestHandler<SendNotificationCommand, Guid>
     {
         private readonly INotificationLogRepository _notificationLogRepository;
-        private readonly IInMemoryNotificationQueue _queue;
+        private readonly IInMemoryNotificationQueue _signalQueue;
 
-        public SendNotificationCommandHandler(INotificationLogRepository notificationLogRepository, IInMemoryNotificationQueue queue)
+        public SendNotificationCommandHandler(INotificationLogRepository notificationLogRepository, IInMemoryNotificationQueue signalQueue)
         {
             _notificationLogRepository = notificationLogRepository;
-            _queue = queue;
+            _signalQueue = signalQueue;
         }
 
         public async Task<Guid> Handle(SendNotificationCommand request, CancellationToken cancellationToken)
         {
-            var correlationId = request.NotificationRequest.Metadata.CorrelationId;
+            var commandRequest = request.NotificationRequest;
+            var correlationId = commandRequest.Metadata.CorrelationId;
 
-            // This logic is now more robust to handle multiple channels
-            var channels = request.NotificationRequest.Overrides.Channels;
+            var channels = commandRequest.Overrides.Channels;
             if (channels == null || !channels.Any())
             {
-                // In a real scenario, you might have default channels based on event type
-                // or user preferences. For now, we'll assume at least one is provided.
                 throw new ArgumentException("No channels specified for notification.");
             }
 
             foreach (var channel in channels)
             {
                 string recipient = "Unknown";
-                if (channel == ChannelType.Email)
+                if (channel.Equals("Email", StringComparison.OrdinalIgnoreCase))
                 {
-                    recipient = request.NotificationRequest.Recipient.Email?.To.FirstOrDefault() ?? "Unknown";
+                    recipient = commandRequest.Recipient.Email?.To.FirstOrDefault() ?? "Unknown";
                 }
-                else if (channel == ChannelType.Sms)
+                else if (channel.Equals("Sms", StringComparison.OrdinalIgnoreCase))
                 {
-                    recipient = request.NotificationRequest.Recipient.PhoneNumber ?? "Unknown";
+                    recipient = commandRequest.Recipient.PhoneNumber ?? "Unknown";
                 }
 
                 var log = new NotificationLog
                 {
                     Id = Guid.NewGuid(),
                     CorrelationId = correlationId,
-                    EventName = request.NotificationRequest.Event.Name,
+                    UserId = commandRequest.Recipient.UserId, // <-- SET USER ID
+                    EventName = commandRequest.Event.Name,
                     Channel = channel,
                     Recipient = recipient,
                     Status = "Queued",
-                    Payload = JsonSerializer.Serialize(request.NotificationRequest),
+                    Priority = commandRequest.Metadata.Priority,
+                    ScheduleAtUtc = commandRequest.Metadata.ScheduleAtUtc,
+                    SmtpSettingId = commandRequest.Metadata.SmtpSettingId,
+                    Payload = JsonSerializer.Serialize(commandRequest),
                     CreatedAtUtc = DateTime.UtcNow
                 };
 
                 await _notificationLogRepository.AddAsync(log);
-
-                // Enqueue each log for background processing
-                await _queue.EnqueueAsync(log);
             }
+
+            await _signalQueue.EnqueueAsync(new NotificationLog());
 
             return correlationId;
         }

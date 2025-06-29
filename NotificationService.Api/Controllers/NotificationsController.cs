@@ -5,10 +5,11 @@
     using Microsoft.AspNetCore.Mvc;
     using NotificationService.Application.DTOs;
     using NotificationService.Application.Features.Notifications.Commands.SendNotification;
+    using NotificationService.Application.Features.Notifications.Queries.GetNotificationsByCorrelationId;
 
     [ApiController]
     [Route("v1/[controller]")]
-    [Authorize] // <-- SECURE ALL ENDPOINTS IN THIS CONTROLLER
+    [Authorize]
     public class NotificationsController : ControllerBase
     {
         private readonly IMediator _mediator;
@@ -26,6 +27,29 @@
             var correlationId = await _mediator.Send(command);
 
             return Accepted(new { CorrelationId = correlationId });
+        }
+
+        [HttpGet("{correlationId}", Name = "GetNotificationsByCorrelationId")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<ActionResult<List<NotificationLogDto>>> GetNotificationsByCorrelationId(
+            Guid correlationId,
+            [FromQuery] DateTime? startDate,
+            [FromQuery] DateTime? endDate,
+            [FromQuery] string? eventName,
+            [FromQuery] Guid? smtpSettingId,
+            [FromQuery] string? userId) // <-- ADDED
+        {
+            var query = new GetNotificationsByCorrelationIdQuery
+            {
+                CorrelationId = correlationId,
+                StartDate = startDate,
+                EndDate = endDate,
+                EventName = eventName,
+                SmtpSettingId = smtpSettingId,
+                UserId = userId // <-- ADDED
+            };
+            var result = await _mediator.Send(query);
+            return Ok(result);
         }
     }
 }

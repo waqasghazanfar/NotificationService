@@ -1,6 +1,4 @@
-﻿using NotificationService.Domain.Enums;
-
-namespace NotificationService.Domain.Entities
+﻿namespace NotificationService.Domain.Entities
 {
     /// <summary>
     /// Represents a reusable notification template.
@@ -10,7 +8,7 @@ namespace NotificationService.Domain.Entities
     {
         public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
-        public ChannelType Channel { get; set; } = ChannelType.Email;
+        public string Channel { get; set; } = string.Empty;
         public string Locale { get; set; } = string.Empty;
         public string? Subject { get; set; }
         public string Body { get; set; } = string.Empty;
