@@ -9,7 +9,7 @@
     using NotificationService.Application.Features.Notifications.Queries.GetNotificationsByCorrelationId;
 
     [ApiController]
-    [Route("v1/[controller]")]
+    [Route("api/[controller]")]
     [ApiKey] // Apply the API Key authentication to the whole controller
     public class NotificationsController : ControllerBase
     {
@@ -20,7 +20,7 @@
             _mediator = mediator;
         }
 
-        [HttpPost("/v1/notify")]
+        [HttpPost("/api/notify")]
         [ProducesResponseType(StatusCodes.Status202Accepted)]
         public async Task<IActionResult> SendNotification([FromBody] NotificationRequestDto notificationRequest)
         {

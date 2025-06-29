@@ -2,6 +2,6 @@
 {
     public interface IEmailProvider
     {
-        Task<string> SendEmailAsync(string to, string subject, string body, Guid? smtpSettingId);
+        Task<string> SendEmailAsync(Application.DTOs.NotificationRequestDto payload, string subject, string body, Guid? smtpSettingId);
     }
 }

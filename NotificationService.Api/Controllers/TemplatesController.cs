@@ -26,7 +26,20 @@
             var dtos = await _mediator.Send(new GetTemplatesListQuery());
             return Ok(dtos);
         }
+        [HttpGet("{id}", Name = "GetTemplateById")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<TemplateListVm>> GetTemplateById(Guid id)
+        {
+            var templateVm = await _mediator.Send(new GetTemplatesByIdQuery { Id = id });
 
+            if (templateVm == null)
+            {
+                return NotFound();
+            }
+
+            return Ok(templateVm);
+        }
         [HttpPost(Name = "Template")]
         public async Task<ActionResult<Guid>> Create([FromBody] CreateTemplateCommand createTemplateCommand)
         {

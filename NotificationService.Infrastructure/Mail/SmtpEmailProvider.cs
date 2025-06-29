@@ -7,6 +7,7 @@
     using NotificationService.Application.Common;
     using NotificationService.Application.Contracts.Infrastructure;
     using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Domain;
     using NotificationService.Domain.Entities;
 
     public class SmtpEmailProvider : IEmailProvider
@@ -20,7 +21,7 @@
             _smtpSettingRepository = smtpSettingRepository;
         }
 
-        public async Task<string> SendEmailAsync(string to, string subject, string body, Guid? smtpSettingId)
+        public async Task<string> SendEmailAsync(Application.DTOs.NotificationRequestDto payload, string subject, string body, Guid? smtpSettingId)
         {
             SmtpSetting? smtpSetting;
 
@@ -41,13 +42,27 @@
                 return "Failed: No active SMTP configuration could be found.";
             }
 
-            _logger.LogInformation("Attempting to send email via {Host} to {Recipient}", smtpSetting.Host, RedactionHelper.MaskEmail(to));
+            _logger.LogInformation("Attempting to send email via {Host} to {Recipient}", smtpSetting.Host, RedactionHelper.MaskEmail(payload.Recipient.Email.To.ToString()));
 
             try
             {
                 var email = new MimeMessage();
                 email.From.Add(new MailboxAddress(smtpSetting.FromName, smtpSetting.FromAddress));
-                email.To.Add(MailboxAddress.Parse(to));
+                if(!payload.Recipient.Email.To.IsNullOrEmpty())
+                {
+                    email.To.Add(MailboxAddress.Parse(payload.Recipient.Email.To.ToCommaSeparatedString()));
+                }
+
+                if (!payload.Recipient.Email.Cc.IsNullOrEmpty())
+                {
+                    email.Cc.Add(MailboxAddress.Parse(payload.Recipient.Email.Cc.ToCommaSeparatedString()));
+                }
+
+                if (!payload.Recipient.Email.Bcc.IsNullOrEmpty())
+                {
+                    email.Bcc.Add(MailboxAddress.Parse(payload.Recipient.Email.Bcc.ToCommaSeparatedString()));
+                }
+                //email.To.Add(MailboxAddress.Parse(payload.Recipient.Email.To. ? payload.Recipient.Email.To.IsNullOrEmpty() : payload.Recipient.Email.To.ToString()));
                 email.Subject = subject;
 
                 var builder = new BodyBuilder { HtmlBody = body };
@@ -59,7 +74,7 @@
                 await smtp.SendAsync(email);
                 await smtp.DisconnectAsync(true);
 
-                _logger.LogInformation("Email successfully sent to {Recipient} via {Host}", RedactionHelper.MaskEmail(to), smtpSetting.Host);
+                _logger.LogInformation("Email successfully sent to {Recipient} via {Host}", RedactionHelper.MaskEmail(payload.Recipient.Email.To.ToString()), smtpSetting.Host);
                 return "Success";
             }
             catch (Exception ex)

@@ -105,7 +105,7 @@
                 if (log.Channel.Equals("Email", StringComparison.OrdinalIgnoreCase))
                 {
                     var provider = sp.GetRequiredService<IEmailProvider>();
-                    response = await provider.SendEmailAsync(log.Recipient, template.Subject ?? "Notification", renderedBody, log.SmtpSettingId);
+                    response = await provider.SendEmailAsync(payload, template.Subject ?? "Notification", renderedBody, log.SmtpSettingId);
                 }
                 else if (log.Channel.Equals("Sms", StringComparison.OrdinalIgnoreCase))
                 {
