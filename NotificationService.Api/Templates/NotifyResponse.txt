@@ -1,0 +1,40 @@
+﻿{
+  "recipient": {
+    "userId": "f1e7f3af-ffae-4f6c-b075-bef7e580e9a0",
+    "email": {
+      "to": [
+        "example@gmail.com"
+      ],
+      "cc": [
+        "examplecc@gmail.com"
+      ],
+      "bcc": [
+        
+      ]
+    },
+    "phoneNumber": "030000000",
+    "pushTokens": [
+      "test Push notification"
+    ]
+  },
+  "event": {
+    "name": "WELCOME_MEMEBR",
+    "data": {
+      "firstname": "حماد",
+      "lastname": "حسن",
+      "membershipStartDate": "06/04/2025"
+    },
+    "locale": "ar-SA"
+  },
+  "metadata": {
+    "correlationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "priority": "high",
+    "scheduleAtUtc": "2025-06-29T15:22:02.343Z",
+    "smtpSettingId": "cc549449-d762-4deb-9667-08ddb6f8b006"
+  },
+  "overrides": {
+    "channels": [
+      "email"
+    ]
+  }
+}

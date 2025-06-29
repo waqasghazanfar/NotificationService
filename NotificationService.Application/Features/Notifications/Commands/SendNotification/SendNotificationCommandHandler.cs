@@ -44,7 +44,7 @@
                 {
                     Id = Guid.NewGuid(),
                     CorrelationId = correlationId,
-                    UserId = commandRequest.Recipient.UserId, // <-- SET USER ID
+                    UserId = commandRequest.Recipient.UserId,
                     EventName = commandRequest.Event.Name,
                     Channel = channel,
                     Recipient = recipient,

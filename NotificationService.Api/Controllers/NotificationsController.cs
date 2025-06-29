@@ -38,7 +38,7 @@
             [FromQuery] DateTime? endDate,
             [FromQuery] string? eventName,
             [FromQuery] Guid? smtpSettingId,
-            [FromQuery] string? userId) // <-- ADDED
+            [FromQuery] string? userId) 
         {
             var query = new GetNotificationsByCorrelationIdQuery
             {
@@ -47,7 +47,7 @@
                 EndDate = endDate,
                 EventName = eventName,
                 SmtpSettingId = smtpSettingId,
-                UserId = userId // <-- ADDED
+                UserId = userId 
             };
             var result = await _mediator.Send(query);
             return Ok(result);

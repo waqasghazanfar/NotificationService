@@ -98,6 +98,7 @@
             var compiledTemplate = Handlebars.Compile(template.Body);
             var renderedBody = compiledTemplate(payload.Event.Data);
             log.TemplateContent = renderedBody;
+            renderedBody = ReplacePlaceholders(renderedBody, payload.Event.Data);
 
             string response = "Provider not found for channel.";
             try
@@ -131,6 +132,34 @@
         {
             _logger.LogInformation("Queued Notification Processor is stopping.");
             await base.StopAsync(stoppingToken);
+        }
+
+        public static string ReplacePlaceholders(string body, Dictionary<string, object> placeholders)
+        {
+            if (string.IsNullOrEmpty(body))
+            {
+                return body;
+            }
+
+            if (placeholders == null || placeholders.Count == 0)
+            {
+                return body; // No placeholders to replace
+            }
+
+            string updatedBody = body;
+
+            foreach (var entry in placeholders)
+            {
+                // Construct the exact placeholder string to search for: [[Key]]
+                string placeholderToFind = $"[[{entry.Key}]]";
+
+                // Replace all occurrences of the placeholder with its corresponding value
+                // Using Replace is efficient for simple string replacements.
+                // If you need more complex regex patterns, Regex.Replace would be used.
+                updatedBody = updatedBody.Replace(placeholderToFind, entry.Value.ToString());
+            }
+
+            return updatedBody;
         }
     }
 }
