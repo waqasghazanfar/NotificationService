@@ -70,7 +70,7 @@
 
                 using var smtp = new SmtpClient();
                 await smtp.ConnectAsync(smtpSetting.Host, smtpSetting.Port, smtpSetting.EnableSsl);
-                await smtp.AuthenticateAsync(smtpSetting.Username, smtpSetting.Password);
+                await smtp.AuthenticateAsync(smtpSetting.Username, smtpSetting.Password.Decrypt());
                 await smtp.SendAsync(email);
                 await smtp.DisconnectAsync(true);
 

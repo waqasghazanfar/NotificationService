@@ -3,10 +3,10 @@
     "userId": "f1e7f3af-ffae-4f6c-b075-bef7e580e9a0",
     "email": {
       "to": [
-        "example@gmail.com"
+        "ghazanfar.waqas@gmail.com"
       ],
       "cc": [
-        "examplecc@gmail.com"
+        "ghazanfar.waqas@gmail.com"
       ],
       "bcc": [
         
@@ -18,7 +18,7 @@
     ]
   },
   "event": {
-    "name": "WELCOME_MEMEBR",
+    "name": "WELCOME_EMAIL",
     "data": {
       "firstname": "حماد",
       "lastname": "حسن",
@@ -30,7 +30,7 @@
     "correlationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "priority": "high",
     "scheduleAtUtc": "2025-06-29T15:22:02.343Z",
-    "smtpSettingId": "cc549449-d762-4deb-9667-08ddb6f8b006"
+    "smtpSettingId": "b0171e75-2a14-4c94-6aa6-08ddb92e9b91"
   },
   "overrides": {
     "channels": [

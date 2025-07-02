@@ -4,6 +4,7 @@
     using MediatR;
     using NotificationService.Application.Contracts.Persistence;
     using NotificationService.Domain.Entities;
+    using NotificationService.Domain;
 
     public class CreateSmtpSettingCommandHandler : IRequestHandler<CreateSmtpSettingCommand, Guid>
     {
@@ -22,8 +23,9 @@
             {
                 await _smtpSettingRepository.UnsetAllDefaultsAsync();
             }
-
+        
             var smtpSetting = _mapper.Map<SmtpSetting>(request);
+            smtpSetting.Password = smtpSetting.Password.Encrypt();
             smtpSetting = await _smtpSettingRepository.AddAsync(smtpSetting);
             return smtpSetting.Id;
         }

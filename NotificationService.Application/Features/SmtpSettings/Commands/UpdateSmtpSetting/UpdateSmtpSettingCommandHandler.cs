@@ -2,6 +2,7 @@
 {
     using MediatR;
     using NotificationService.Application.Contracts.Persistence;
+    using NotificationService.Domain;
 
     public class UpdateSmtpSettingCommandHandler : IRequestHandler<UpdateSmtpSettingCommand>
     {
@@ -36,7 +37,7 @@
 
             if (!string.IsNullOrEmpty(request.Password))
             {
-                settingToUpdate.Password = request.Password;
+                settingToUpdate.Password = request.Password.Encrypt();
             }
 
             await _smtpSettingRepository.UpdateAsync(settingToUpdate);
