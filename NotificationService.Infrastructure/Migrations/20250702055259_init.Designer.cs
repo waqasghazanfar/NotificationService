@@ -12,7 +12,7 @@ using NotificationService.Infrastructure.Persistence;
 namespace NotificationService.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250629102924_init")]
+    [Migration("20250702055259_init")]
     partial class init
     {
         /// <inheritdoc />
